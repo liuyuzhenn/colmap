@@ -40,41 +40,48 @@
 #include "util/bitmap.h"
 #include "util/misc.h"
 
-namespace colmap {
-namespace {
+namespace colmap
+{
+namespace
+{
 
 void SortAndAppendNextImages(std::vector<std::pair<image_t, float>> image_ranks,
-                             std::vector<image_t>* sorted_images_ids) {
+                             std::vector<image_t> *sorted_images_ids)
+{
   std::sort(image_ranks.begin(), image_ranks.end(),
-            [](const std::pair<image_t, float>& image1,
-               const std::pair<image_t, float>& image2) {
-              return image1.second > image2.second;
-            });
+            [](const std::pair<image_t, float> &image1,
+               const std::pair<image_t, float> &image2)
+            { return image1.second > image2.second; });
 
   sorted_images_ids->reserve(sorted_images_ids->size() + image_ranks.size());
-  for (const auto& image : image_ranks) {
+  for (const auto &image : image_ranks)
+  {
     sorted_images_ids->push_back(image.first);
   }
 
   image_ranks.clear();
 }
 
-float RankNextImageMaxVisiblePointsNum(const Image& image) {
+float RankNextImageMaxVisiblePointsNum(const Image &image)
+{
   return static_cast<float>(image.NumVisiblePoints3D());
 }
 
-float RankNextImageMaxVisiblePointsRatio(const Image& image) {
+float RankNextImageMaxVisiblePointsRatio(const Image &image)
+{
   return static_cast<float>(image.NumVisiblePoints3D()) /
          static_cast<float>(image.NumObservations());
 }
 
-float RankNextImageMinUncertainty(const Image& image) {
+float RankNextImageMinUncertainty(const Image &image)
+{
   return static_cast<float>(image.Point3DVisibilityScore());
 }
 
-}  // namespace
+} // namespace
 
-bool IncrementalMapper::Options::Check() const {
+bool IncrementalMapper::Options::Check() const
+{
   CHECK_OPTION_GT(init_min_num_inliers, 0);
   CHECK_OPTION_GT(init_max_error, 0.0);
   CHECK_OPTION_GE(init_max_forward_motion, 0.0);
@@ -96,15 +103,15 @@ bool IncrementalMapper::Options::Check() const {
   return true;
 }
 
-IncrementalMapper::IncrementalMapper(const DatabaseCache* database_cache)
-    : database_cache_(database_cache),
-      reconstruction_(nullptr),
-      triangulator_(nullptr),
-      num_total_reg_images_(0),
-      num_shared_reg_images_(0),
-      prev_init_image_pair_id_(kInvalidImagePairId) {}
+IncrementalMapper::IncrementalMapper(const DatabaseCache *database_cache)
+    : database_cache_(database_cache), reconstruction_(nullptr),
+      triangulator_(nullptr), num_total_reg_images_(0),
+      num_shared_reg_images_(0), prev_init_image_pair_id_(kInvalidImagePairId)
+{
+}
 
-void IncrementalMapper::BeginReconstruction(Reconstruction* reconstruction) {
+void IncrementalMapper::BeginReconstruction(Reconstruction *reconstruction)
+{
   CHECK(reconstruction_ == nullptr);
   reconstruction_ = reconstruction;
   reconstruction_->Load(*database_cache_);
@@ -114,7 +121,8 @@ void IncrementalMapper::BeginReconstruction(Reconstruction* reconstruction) {
 
   num_shared_reg_images_ = 0;
   num_reg_images_per_camera_.clear();
-  for (const image_t image_id : reconstruction_->RegImageIds()) {
+  for (const image_t image_id : reconstruction_->RegImageIds())
+  {
     RegisterImageEvent(image_id);
   }
 
@@ -129,11 +137,14 @@ void IncrementalMapper::BeginReconstruction(Reconstruction* reconstruction) {
   num_reg_trials_.clear();
 }
 
-void IncrementalMapper::EndReconstruction(const bool discard) {
+void IncrementalMapper::EndReconstruction(const bool discard)
+{
   CHECK_NOTNULL(reconstruction_);
 
-  if (discard) {
-    for (const image_t image_id : reconstruction_->RegImageIds()) {
+  if (discard)
+  {
+    for (const image_t image_id : reconstruction_->RegImageIds())
+    {
       DeRegisterImageEvent(image_id);
     }
   }
@@ -143,50 +154,62 @@ void IncrementalMapper::EndReconstruction(const bool discard) {
   triangulator_.reset();
 }
 
-bool IncrementalMapper::FindInitialImagePair(const Options& options,
-                                             image_t* image_id1,
-                                             image_t* image_id2) {
+bool IncrementalMapper::FindInitialImagePair(const Options &options,
+                                             image_t *image_id1,
+                                             image_t *image_id2)
+{
   CHECK(options.Check());
 
   std::vector<image_t> image_ids1;
-  if (*image_id1 != kInvalidImageId && *image_id2 == kInvalidImageId) {
+  if (*image_id1 != kInvalidImageId && *image_id2 == kInvalidImageId)
+  {
     // Only *image_id1 provided.
-    if (!database_cache_->ExistsImage(*image_id1)) {
+    if (!database_cache_->ExistsImage(*image_id1))
+    {
       return false;
     }
     image_ids1.push_back(*image_id1);
-  } else if (*image_id1 == kInvalidImageId && *image_id2 != kInvalidImageId) {
+  }
+  else if (*image_id1 == kInvalidImageId && *image_id2 != kInvalidImageId)
+  {
     // Only *image_id2 provided.
-    if (!database_cache_->ExistsImage(*image_id2)) {
+    if (!database_cache_->ExistsImage(*image_id2))
+    {
       return false;
     }
     image_ids1.push_back(*image_id2);
-  } else {
+  }
+  else
+  {
     // No initial seed image provided.
     image_ids1 = FindFirstInitialImage(options);
   }
 
   // Try to find good initial pair.
-  for (size_t i1 = 0; i1 < image_ids1.size(); ++i1) {
+  for (size_t i1 = 0; i1 < image_ids1.size(); ++i1)
+  {
     *image_id1 = image_ids1[i1];
 
     const std::vector<image_t> image_ids2 =
         FindSecondInitialImage(options, *image_id1);
 
-    for (size_t i2 = 0; i2 < image_ids2.size(); ++i2) {
+    for (size_t i2 = 0; i2 < image_ids2.size(); ++i2)
+    {
       *image_id2 = image_ids2[i2];
 
       const image_pair_t pair_id =
           Database::ImagePairToPairId(*image_id1, *image_id2);
 
       // Try every pair only once.
-      if (init_image_pairs_.count(pair_id) > 0) {
+      if (init_image_pairs_.count(pair_id) > 0)
+      {
         continue;
       }
 
       init_image_pairs_.insert(pair_id);
 
-      if (EstimateInitialTwoViewGeometry(options, *image_id1, *image_id2)) {
+      if (EstimateInitialTwoViewGeometry(options, *image_id1, *image_id2))
+      {
         return true;
       }
     }
@@ -199,51 +222,60 @@ bool IncrementalMapper::FindInitialImagePair(const Options& options,
   return false;
 }
 
-std::vector<image_t> IncrementalMapper::FindNextImages(const Options& options) {
+std::vector<image_t> IncrementalMapper::FindNextImages(const Options &options)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK(options.Check());
 
-  std::function<float(const Image&)> rank_image_func;
-  switch (options.image_selection_method) {
-    case Options::ImageSelectionMethod::MAX_VISIBLE_POINTS_NUM:
-      rank_image_func = RankNextImageMaxVisiblePointsNum;
-      break;
-    case Options::ImageSelectionMethod::MAX_VISIBLE_POINTS_RATIO:
-      rank_image_func = RankNextImageMaxVisiblePointsRatio;
-      break;
-    case Options::ImageSelectionMethod::MIN_UNCERTAINTY:
-      rank_image_func = RankNextImageMinUncertainty;
-      break;
+  std::function<float(const Image &)> rank_image_func;
+  switch (options.image_selection_method)
+  {
+  case Options::ImageSelectionMethod::MAX_VISIBLE_POINTS_NUM:
+    rank_image_func = RankNextImageMaxVisiblePointsNum;
+    break;
+  case Options::ImageSelectionMethod::MAX_VISIBLE_POINTS_RATIO:
+    rank_image_func = RankNextImageMaxVisiblePointsRatio;
+    break;
+  case Options::ImageSelectionMethod::MIN_UNCERTAINTY:
+    rank_image_func = RankNextImageMinUncertainty;
+    break;
   }
 
   std::vector<std::pair<image_t, float>> image_ranks;
   std::vector<std::pair<image_t, float>> other_image_ranks;
 
   // Append images that have not failed to register before.
-  for (const auto& image : reconstruction_->Images()) {
+  for (const auto &image : reconstruction_->Images())
+  {
     // Skip images that are already registered.
-    if (image.second.IsRegistered()) {
+    if (image.second.IsRegistered())
+    {
       continue;
     }
 
     // Only consider images with a sufficient number of visible points.
     if (image.second.NumVisiblePoints3D() <
-        static_cast<size_t>(options.abs_pose_min_num_inliers)) {
+        static_cast<size_t>(options.abs_pose_min_num_inliers))
+    {
       continue;
     }
 
     // Only try registration for a certain maximum number of times.
     const size_t num_reg_trials = num_reg_trials_[image.first];
-    if (num_reg_trials >= static_cast<size_t>(options.max_reg_trials)) {
+    if (num_reg_trials >= static_cast<size_t>(options.max_reg_trials))
+    {
       continue;
     }
 
     // If image has been filtered or failed to register, place it in the
     // second bucket and prefer images that have not been tried before.
     const float rank = rank_image_func(image.second);
-    if (filtered_images_.count(image.first) == 0 && num_reg_trials == 0) {
+    if (filtered_images_.count(image.first) == 0 && num_reg_trials == 0)
+    {
       image_ranks.emplace_back(image.first, rank);
-    } else {
+    }
+    else
+    {
       other_image_ranks.emplace_back(image.first, rank);
     }
   }
@@ -255,9 +287,10 @@ std::vector<image_t> IncrementalMapper::FindNextImages(const Options& options) {
   return ranked_images_ids;
 }
 
-bool IncrementalMapper::RegisterInitialImagePair(const Options& options,
+bool IncrementalMapper::RegisterInitialImagePair(const Options &options,
                                                  const image_t image_id1,
-                                                 const image_t image_id2) {
+                                                 const image_t image_id2)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK_EQ(reconstruction_->NumRegImages(), 0);
 
@@ -272,17 +305,18 @@ bool IncrementalMapper::RegisterInitialImagePair(const Options& options,
       Database::ImagePairToPairId(image_id1, image_id2);
   init_image_pairs_.insert(pair_id);
 
-  Image& image1 = reconstruction_->Image(image_id1);
-  const Camera& camera1 = reconstruction_->Camera(image1.CameraId());
+  Image &image1 = reconstruction_->Image(image_id1);
+  const Camera &camera1 = reconstruction_->Camera(image1.CameraId());
 
-  Image& image2 = reconstruction_->Image(image_id2);
-  const Camera& camera2 = reconstruction_->Camera(image2.CameraId());
+  Image &image2 = reconstruction_->Image(image_id2);
+  const Camera &camera2 = reconstruction_->Camera(image2.CameraId());
 
   //////////////////////////////////////////////////////////////////////////////
   // Estimate two-view geometry
   //////////////////////////////////////////////////////////////////////////////
 
-  if (!EstimateInitialTwoViewGeometry(options, image_id1, image_id2)) {
+  if (!EstimateInitialTwoViewGeometry(options, image_id1, image_id2))
+  {
     return false;
   }
 
@@ -305,9 +339,9 @@ bool IncrementalMapper::RegisterInitialImagePair(const Options& options,
   RegisterImageEvent(image_id1);
   RegisterImageEvent(image_id2);
 
-  const CorrespondenceGraph& correspondence_graph =
+  const CorrespondenceGraph &correspondence_graph =
       database_cache_->CorrespondenceGraph();
-  const FeatureMatches& corrs =
+  const FeatureMatches &corrs =
       correspondence_graph.FindCorrespondencesBetweenImages(image_id1,
                                                             image_id2);
 
@@ -320,18 +354,20 @@ bool IncrementalMapper::RegisterInitialImagePair(const Options& options,
   track.AddElement(TrackElement());
   track.Element(0).image_id = image_id1;
   track.Element(1).image_id = image_id2;
-  for (const auto& corr : corrs) {
+  for (const auto &corr : corrs)
+  {
     const Eigen::Vector2d point1_N =
         camera1.ImageToWorld(image1.Point2D(corr.point2D_idx1).XY());
     const Eigen::Vector2d point2_N =
         camera2.ImageToWorld(image2.Point2D(corr.point2D_idx2).XY());
-    const Eigen::Vector3d& xyz =
+    const Eigen::Vector3d &xyz =
         TriangulatePoint(proj_matrix1, proj_matrix2, point1_N, point2_N);
     const double tri_angle =
         CalculateTriangulationAngle(proj_center1, proj_center2, xyz);
     if (tri_angle >= min_tri_angle_rad &&
         HasPointPositiveDepth(proj_matrix1, xyz) &&
-        HasPointPositiveDepth(proj_matrix2, xyz)) {
+        HasPointPositiveDepth(proj_matrix2, xyz))
+    {
       track.Element(0).point2D_idx = corr.point2D_idx1;
       track.Element(1).point2D_idx = corr.point2D_idx2;
       reconstruction_->AddPoint3D(xyz, track);
@@ -341,15 +377,16 @@ bool IncrementalMapper::RegisterInitialImagePair(const Options& options,
   return true;
 }
 
-bool IncrementalMapper::RegisterNextImage(const Options& options,
-                                          const image_t image_id) {
+bool IncrementalMapper::RegisterNextImage(const Options &options,
+                                          const image_t image_id)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK_GE(reconstruction_->NumRegImages(), 2);
 
   CHECK(options.Check());
 
-  Image& image = reconstruction_->Image(image_id);
-  Camera& camera = reconstruction_->Camera(image.CameraId());
+  Image &image = reconstruction_->Image(image_id);
+  Camera &camera = reconstruction_->Camera(image.CameraId());
 
   CHECK(!image.IsRegistered()) << "Image cannot be registered multiple times";
 
@@ -357,7 +394,8 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
 
   // Check if enough 2D-3D correspondences.
   if (image.NumVisiblePoints3D() <
-      static_cast<size_t>(options.abs_pose_min_num_inliers)) {
+      static_cast<size_t>(options.abs_pose_min_num_inliers))
+  {
     return false;
   }
 
@@ -372,9 +410,10 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
   std::vector<Eigen::Vector3d> tri_points3D;
 
   for (point2D_t point2D_idx = 0; point2D_idx < image.NumPoints2D();
-       ++point2D_idx) {
-    const Point2D& point2D = image.Point2D(point2D_idx);
-    const CorrespondenceGraph& correspondence_graph =
+       ++point2D_idx)
+  {
+    const Point2D &point2D = image.Point2D(point2D_idx);
+    const CorrespondenceGraph &correspondence_graph =
         database_cache_->CorrespondenceGraph();
     const std::vector<CorrespondenceGraph::Correspondence> corrs =
         correspondence_graph.FindTransitiveCorrespondences(
@@ -382,33 +421,38 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
 
     std::unordered_set<point3D_t> point3D_ids;
 
-    for (const auto corr : corrs) {
-      const Image& corr_image = reconstruction_->Image(corr.image_id);
-      if (!corr_image.IsRegistered()) {
+    for (const auto corr : corrs)
+    {
+      const Image &corr_image = reconstruction_->Image(corr.image_id);
+      if (!corr_image.IsRegistered())
+      {
         continue;
       }
 
-      const Point2D& corr_point2D = corr_image.Point2D(corr.point2D_idx);
-      if (!corr_point2D.HasPoint3D()) {
+      const Point2D &corr_point2D = corr_image.Point2D(corr.point2D_idx);
+      if (!corr_point2D.HasPoint3D())
+      {
         continue;
       }
 
       // Avoid duplicate correspondences.
-      if (point3D_ids.count(corr_point2D.Point3DId()) > 0) {
+      if (point3D_ids.count(corr_point2D.Point3DId()) > 0)
+      {
         continue;
       }
 
-      const Camera& corr_camera =
+      const Camera &corr_camera =
           reconstruction_->Camera(corr_image.CameraId());
 
       // Avoid correspondences to images with bogus camera parameters.
       if (corr_camera.HasBogusParams(options.min_focal_length_ratio,
                                      options.max_focal_length_ratio,
-                                     options.max_extra_param)) {
+                                     options.max_extra_param))
+      {
         continue;
       }
 
-      const Point3D& point3D =
+      const Point3D &point3D =
           reconstruction_->Point3D(corr_point2D.Point3DId());
 
       tri_corrs.emplace_back(point2D_idx, corr_point2D.Point3DId());
@@ -422,7 +466,8 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
   // can only differ, when there are images with bogus camera parameters, and
   // hence we skip some of the 2D-3D correspondences.
   if (tri_points2D.size() <
-      static_cast<size_t>(options.abs_pose_min_num_inliers)) {
+      static_cast<size_t>(options.abs_pose_min_num_inliers))
+  {
     return false;
   }
 
@@ -450,23 +495,29 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
   abs_pose_options.ransac_options.confidence = 0.99999;
 
   AbsolutePoseRefinementOptions abs_pose_refinement_options;
-  if (num_reg_images_per_camera_[image.CameraId()] > 0) {
+  if (num_reg_images_per_camera_[image.CameraId()] > 0)
+  {
     // Camera already refined from another image with the same camera.
     if (camera.HasBogusParams(options.min_focal_length_ratio,
                               options.max_focal_length_ratio,
-                              options.max_extra_param)) {
+                              options.max_extra_param))
+    {
       // Previously refined camera has bogus parameters,
       // so reset parameters and try to re-estimage.
       camera.SetParams(database_cache_->Camera(image.CameraId()).Params());
       abs_pose_options.estimate_focal_length = !camera.HasPriorFocalLength();
       abs_pose_refinement_options.refine_focal_length = true;
       abs_pose_refinement_options.refine_extra_params = true;
-    } else {
+    }
+    else
+    {
       abs_pose_options.estimate_focal_length = false;
       abs_pose_refinement_options.refine_focal_length = false;
       abs_pose_refinement_options.refine_extra_params = false;
     }
-  } else {
+  }
+  else
+  {
     // Camera not refined before. Note that the camera parameters might have
     // been changed before but the image was filtered, so we explicitly reset
     // the camera parameters and try to re-estimate them.
@@ -476,12 +527,14 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
     abs_pose_refinement_options.refine_extra_params = true;
   }
 
-  if (!options.abs_pose_refine_focal_length) {
+  if (!options.abs_pose_refine_focal_length)
+  {
     abs_pose_options.estimate_focal_length = false;
     abs_pose_refinement_options.refine_focal_length = false;
   }
 
-  if (!options.abs_pose_refine_extra_params) {
+  if (!options.abs_pose_refine_extra_params)
+  {
     abs_pose_refinement_options.refine_extra_params = false;
   }
 
@@ -490,11 +543,13 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
 
   if (!EstimateAbsolutePose(abs_pose_options, tri_points2D, tri_points3D,
                             &image.Qvec(), &image.Tvec(), &camera, &num_inliers,
-                            &inlier_mask)) {
+                            &inlier_mask))
+  {
     return false;
   }
 
-  if (num_inliers < static_cast<size_t>(options.abs_pose_min_num_inliers)) {
+  if (num_inliers < static_cast<size_t>(options.abs_pose_min_num_inliers))
+  {
     return false;
   }
 
@@ -504,7 +559,8 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
 
   if (!RefineAbsolutePose(abs_pose_refinement_options, inlier_mask,
                           tri_points2D, tri_points3D, &image.Qvec(),
-                          &image.Tvec(), &camera)) {
+                          &image.Tvec(), &camera))
+  {
     return false;
   }
 
@@ -515,11 +571,14 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
   reconstruction_->RegisterImage(image_id);
   RegisterImageEvent(image_id);
 
-  for (size_t i = 0; i < inlier_mask.size(); ++i) {
-    if (inlier_mask[i]) {
+  for (size_t i = 0; i < inlier_mask.size(); ++i)
+  {
+    if (inlier_mask[i])
+    {
       const point2D_t point2D_idx = tri_corrs[i].first;
-      const Point2D& point2D = image.Point2D(point2D_idx);
-      if (!point2D.HasPoint3D()) {
+      const Point2D &point2D = image.Point2D(point2D_idx);
+      if (!point2D.HasPoint3D())
+      {
         const point3D_t point3D_id = tri_corrs[i].second;
         const TrackElement track_el(image_id, point2D_idx);
         reconstruction_->AddObservation(point3D_id, track_el);
@@ -532,35 +591,39 @@ bool IncrementalMapper::RegisterNextImage(const Options& options,
 }
 
 size_t IncrementalMapper::TriangulateImage(
-    const IncrementalTriangulator::Options& tri_options,
-    const image_t image_id) {
+    const IncrementalTriangulator::Options &tri_options, const image_t image_id)
+{
   CHECK_NOTNULL(reconstruction_);
   return triangulator_->TriangulateImage(tri_options, image_id);
 }
 
 size_t IncrementalMapper::Retriangulate(
-    const IncrementalTriangulator::Options& tri_options) {
+    const IncrementalTriangulator::Options &tri_options)
+{
   CHECK_NOTNULL(reconstruction_);
   return triangulator_->Retriangulate(tri_options);
 }
 
 size_t IncrementalMapper::CompleteTracks(
-    const IncrementalTriangulator::Options& tri_options) {
+    const IncrementalTriangulator::Options &tri_options)
+{
   CHECK_NOTNULL(reconstruction_);
   return triangulator_->CompleteAllTracks(tri_options);
 }
 
 size_t IncrementalMapper::MergeTracks(
-    const IncrementalTriangulator::Options& tri_options) {
+    const IncrementalTriangulator::Options &tri_options)
+{
   CHECK_NOTNULL(reconstruction_);
   return triangulator_->MergeAllTracks(tri_options);
 }
 
 IncrementalMapper::LocalBundleAdjustmentReport
 IncrementalMapper::AdjustLocalBundle(
-    const Options& options, const BundleAdjustmentOptions& ba_options,
-    const IncrementalTriangulator::Options& tri_options, const image_t image_id,
-    const std::unordered_set<point3D_t>& point3D_ids) {
+    const Options &options, const BundleAdjustmentOptions &ba_options,
+    const IncrementalTriangulator::Options &tri_options, const image_t image_id,
+    const std::unordered_set<point3D_t> &point3D_ids)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK(options.Check());
 
@@ -570,17 +633,22 @@ IncrementalMapper::AdjustLocalBundle(
   const std::vector<image_t> local_bundle = FindLocalBundle(options, image_id);
 
   // Do the bundle adjustment only if there is any connected images.
-  if (local_bundle.size() > 0) {
+  if (local_bundle.size() > 0)
+  {
     BundleAdjustmentConfig ba_config;
     ba_config.AddImage(image_id);
-    for (const image_t local_image_id : local_bundle) {
+    for (const image_t local_image_id : local_bundle)
+    {
       ba_config.AddImage(local_image_id);
     }
 
     // Fix the existing images, if option specified.
-    if (options.fix_existing_images) {
-      for (const image_t local_image_id : local_bundle) {
-        if (existing_image_ids_.count(local_image_id)) {
+    if (options.fix_existing_images)
+    {
+      for (const image_t local_image_id : local_bundle)
+      {
+        if (existing_image_ids_.count(local_image_id))
+        {
           ba_config.SetConstantPose(local_image_id);
         }
       }
@@ -589,29 +657,35 @@ IncrementalMapper::AdjustLocalBundle(
     // Determine which cameras to fix, when not all the registered images
     // are within the current local bundle.
     std::unordered_map<camera_t, size_t> num_images_per_camera;
-    for (const image_t image_id : ba_config.Images()) {
-      const Image& image = reconstruction_->Image(image_id);
+    for (const image_t image_id : ba_config.Images())
+    {
+      const Image &image = reconstruction_->Image(image_id);
       num_images_per_camera[image.CameraId()] += 1;
     }
 
-    for (const auto& camera_id_and_num_images_pair : num_images_per_camera) {
+    for (const auto &camera_id_and_num_images_pair : num_images_per_camera)
+    {
       const size_t num_reg_images_for_camera =
           num_reg_images_per_camera_.at(camera_id_and_num_images_pair.first);
-      if (camera_id_and_num_images_pair.second < num_reg_images_for_camera) {
+      if (camera_id_and_num_images_pair.second < num_reg_images_for_camera)
+      {
         ba_config.SetConstantCamera(camera_id_and_num_images_pair.first);
       }
     }
 
     // Fix 7 DOF to avoid scale/rotation/translation drift in bundle adjustment.
-    if (local_bundle.size() == 1) {
+    if (local_bundle.size() == 1)
+    {
       ba_config.SetConstantPose(local_bundle[0]);
       ba_config.SetConstantTvec(image_id, {0});
-    } else if (local_bundle.size() > 1) {
+    }
+    else if (local_bundle.size() > 1)
+    {
       const image_t image_id1 = local_bundle[local_bundle.size() - 1];
       const image_t image_id2 = local_bundle[local_bundle.size() - 2];
       ba_config.SetConstantPose(image_id1);
-      if (!options.fix_existing_images ||
-          !existing_image_ids_.count(image_id2)) {
+      if (!options.fix_existing_images || !existing_image_ids_.count(image_id2))
+      {
         ba_config.SetConstantTvec(image_id2, {0});
       }
     }
@@ -622,10 +696,12 @@ IncrementalMapper::AdjustLocalBundle(
     // to them to bundle adjustment and track merging/completion would slow
     // down the local bundle adjustment significantly.
     std::unordered_set<point3D_t> variable_point3D_ids;
-    for (const point3D_t point3D_id : point3D_ids) {
-      const Point3D& point3D = reconstruction_->Point3D(point3D_id);
+    for (const point3D_t point3D_id : point3D_ids)
+    {
+      const Point3D &point3D = reconstruction_->Point3D(point3D_id);
       const size_t kMaxTrackLength = 15;
-      if (!point3D.HasError() || point3D.Track().Length() <= kMaxTrackLength) {
+      if (!point3D.HasError() || point3D.Track().Length() <= kMaxTrackLength)
+      {
         ba_config.AddVariablePoint(point3D_id);
         variable_point3D_ids.insert(point3D_id);
       }
@@ -669,10 +745,11 @@ IncrementalMapper::AdjustLocalBundle(
 }
 
 bool IncrementalMapper::AdjustGlobalBundle(
-    const Options& options, const BundleAdjustmentOptions& ba_options) {
+    const Options &options, const BundleAdjustmentOptions &ba_options)
+{
   CHECK_NOTNULL(reconstruction_);
 
-  const std::vector<image_t>& reg_image_ids = reconstruction_->RegImageIds();
+  const std::vector<image_t> &reg_image_ids = reconstruction_->RegImageIds();
 
   CHECK_GE(reg_image_ids.size(), 2) << "At least two images must be "
                                        "registered for global "
@@ -683,14 +760,18 @@ bool IncrementalMapper::AdjustGlobalBundle(
 
   // Configure bundle adjustment.
   BundleAdjustmentConfig ba_config;
-  for (const image_t image_id : reg_image_ids) {
+  for (const image_t image_id : reg_image_ids)
+  {
     ba_config.AddImage(image_id);
   }
 
   // Fix the existing images, if option specified.
-  if (options.fix_existing_images) {
-    for (const image_t image_id : reg_image_ids) {
-      if (existing_image_ids_.count(image_id)) {
+  if (options.fix_existing_images)
+  {
+    for (const image_t image_id : reg_image_ids)
+    {
+      if (existing_image_ids_.count(image_id))
+      {
         ba_config.SetConstantPose(image_id);
       }
     }
@@ -699,13 +780,15 @@ bool IncrementalMapper::AdjustGlobalBundle(
   // Fix 7-DOFs of the bundle adjustment problem.
   ba_config.SetConstantPose(reg_image_ids[0]);
   if (!options.fix_existing_images ||
-      !existing_image_ids_.count(reg_image_ids[1])) {
+      !existing_image_ids_.count(reg_image_ids[1]))
+  {
     ba_config.SetConstantTvec(reg_image_ids[1], {0});
   }
 
   // Run bundle adjustment.
   BundleAdjuster bundle_adjuster(ba_options, ba_config);
-  if (!bundle_adjuster.Solve(reconstruction_)) {
+  if (!bundle_adjuster.Solve(reconstruction_))
+  {
     return false;
   }
 
@@ -717,11 +800,12 @@ bool IncrementalMapper::AdjustGlobalBundle(
 }
 
 bool IncrementalMapper::AdjustParallelGlobalBundle(
-    const BundleAdjustmentOptions& ba_options,
-    const ParallelBundleAdjuster::Options& parallel_ba_options) {
+    const BundleAdjustmentOptions &ba_options,
+    const ParallelBundleAdjuster::Options &parallel_ba_options)
+{
   CHECK_NOTNULL(reconstruction_);
 
-  const std::vector<image_t>& reg_image_ids = reconstruction_->RegImageIds();
+  const std::vector<image_t> &reg_image_ids = reconstruction_->RegImageIds();
 
   CHECK_GE(reg_image_ids.size(), 2)
       << "At least two images must be registered for global bundle-adjustment";
@@ -731,14 +815,16 @@ bool IncrementalMapper::AdjustParallelGlobalBundle(
 
   // Configure bundle adjustment.
   BundleAdjustmentConfig ba_config;
-  for (const image_t image_id : reg_image_ids) {
+  for (const image_t image_id : reg_image_ids)
+  {
     ba_config.AddImage(image_id);
   }
 
   // Run bundle adjustment.
   ParallelBundleAdjuster bundle_adjuster(parallel_ba_options, ba_options,
                                          ba_config);
-  if (!bundle_adjuster.Solve(reconstruction_)) {
+  if (!bundle_adjuster.Solve(reconstruction_))
+  {
     return false;
   }
 
@@ -749,7 +835,8 @@ bool IncrementalMapper::AdjustParallelGlobalBundle(
   return true;
 }
 
-size_t IncrementalMapper::FilterImages(const Options& options) {
+size_t IncrementalMapper::FilterImages(const Options &options)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK(options.Check());
 
@@ -757,7 +844,8 @@ size_t IncrementalMapper::FilterImages(const Options& options) {
   // calibration is often still refining a lot. Hence, the camera parameters
   // are not stable in the beginning.
   const size_t kMinNumImages = 20;
-  if (reconstruction_->NumRegImages() < kMinNumImages) {
+  if (reconstruction_->NumRegImages() < kMinNumImages)
+  {
     return {};
   }
 
@@ -765,7 +853,8 @@ size_t IncrementalMapper::FilterImages(const Options& options) {
       options.min_focal_length_ratio, options.max_focal_length_ratio,
       options.max_extra_param);
 
-  for (const image_t image_id : image_ids) {
+  for (const image_t image_id : image_ids)
+  {
     DeRegisterImageEvent(image_id);
     filtered_images_.insert(image_id);
   }
@@ -773,38 +862,46 @@ size_t IncrementalMapper::FilterImages(const Options& options) {
   return image_ids.size();
 }
 
-size_t IncrementalMapper::FilterPoints(const Options& options) {
+size_t IncrementalMapper::FilterPoints(const Options &options)
+{
   CHECK_NOTNULL(reconstruction_);
   CHECK(options.Check());
   return reconstruction_->FilterAllPoints3D(options.filter_max_reproj_error,
                                             options.filter_min_tri_angle);
 }
 
-const Reconstruction& IncrementalMapper::GetReconstruction() const {
+const Reconstruction &IncrementalMapper::GetReconstruction() const
+{
   CHECK_NOTNULL(reconstruction_);
   return *reconstruction_;
 }
 
-size_t IncrementalMapper::NumTotalRegImages() const {
+size_t IncrementalMapper::NumTotalRegImages() const
+{
   return num_total_reg_images_;
 }
 
-size_t IncrementalMapper::NumSharedRegImages() const {
+size_t IncrementalMapper::NumSharedRegImages() const
+{
   return num_shared_reg_images_;
 }
 
-const std::unordered_set<point3D_t>& IncrementalMapper::GetModifiedPoints3D() {
+const std::unordered_set<point3D_t> &IncrementalMapper::GetModifiedPoints3D()
+{
   return triangulator_->GetModifiedPoints3D();
 }
 
-void IncrementalMapper::ClearModifiedPoints3D() {
+void IncrementalMapper::ClearModifiedPoints3D()
+{
   triangulator_->ClearModifiedPoints3D();
 }
 
-std::vector<image_t> IncrementalMapper::FindFirstInitialImage(
-    const Options& options) const {
+std::vector<image_t>
+IncrementalMapper::FindFirstInitialImage(const Options &options) const
+{
   // Struct to hold meta-data for ranking images.
-  struct ImageInfo {
+  struct ImageInfo
+  {
     image_t image_id;
     bool prior_focal_length;
     image_t num_correspondences;
@@ -817,26 +914,30 @@ std::vector<image_t> IncrementalMapper::FindFirstInitialImage(
   // correspondences.
   std::vector<ImageInfo> image_infos;
   image_infos.reserve(reconstruction_->NumImages());
-  for (const auto& image : reconstruction_->Images()) {
+  for (const auto &image : reconstruction_->Images())
+  {
     // Only images with correspondences can be registered.
-    if (image.second.NumCorrespondences() == 0) {
+    if (image.second.NumCorrespondences() == 0)
+    {
       continue;
     }
 
     // Only use images for initialization a maximum number of times.
     if (init_num_reg_trials_.count(image.first) &&
-        init_num_reg_trials_.at(image.first) >= init_max_reg_trials) {
+        init_num_reg_trials_.at(image.first) >= init_max_reg_trials)
+    {
       continue;
     }
 
     // Only use images for initialization that are not registered in any
     // of the other reconstructions.
     if (num_registrations_.count(image.first) > 0 &&
-        num_registrations_.at(image.first) > 0) {
+        num_registrations_.at(image.first) > 0)
+    {
       continue;
     }
 
-    const class Camera& camera =
+    const class Camera &camera =
         reconstruction_->Camera(image.second.CameraId());
     ImageInfo image_info;
     image_info.image_id = image.first;
@@ -847,52 +948,65 @@ std::vector<image_t> IncrementalMapper::FindFirstInitialImage(
 
   // Sort images such that images with a prior focal length and more
   // correspondences are preferred, i.e. they appear in the front of the list.
-  std::sort(
-      image_infos.begin(), image_infos.end(),
-      [](const ImageInfo& image_info1, const ImageInfo& image_info2) {
-        if (image_info1.prior_focal_length && !image_info2.prior_focal_length) {
-          return true;
-        } else if (!image_info1.prior_focal_length &&
-                   image_info2.prior_focal_length) {
-          return false;
-        } else {
-          return image_info1.num_correspondences >
-                 image_info2.num_correspondences;
-        }
-      });
+  std::sort(image_infos.begin(), image_infos.end(),
+            [](const ImageInfo &image_info1, const ImageInfo &image_info2)
+            {
+              if (image_info1.prior_focal_length &&
+                  !image_info2.prior_focal_length)
+              {
+                return true;
+              }
+              else if (!image_info1.prior_focal_length &&
+                       image_info2.prior_focal_length)
+              {
+                return false;
+              }
+              else
+              {
+                return image_info1.num_correspondences >
+                       image_info2.num_correspondences;
+              }
+            });
 
   // Extract image identifiers in sorted order.
   std::vector<image_t> image_ids;
   image_ids.reserve(image_infos.size());
-  for (const ImageInfo& image_info : image_infos) {
+  for (const ImageInfo &image_info : image_infos)
+  {
     image_ids.push_back(image_info.image_id);
   }
 
   return image_ids;
 }
 
-std::vector<image_t> IncrementalMapper::FindSecondInitialImage(
-    const Options& options, const image_t image_id1) const {
-  const CorrespondenceGraph& correspondence_graph =
+std::vector<image_t>
+IncrementalMapper::FindSecondInitialImage(const Options &options,
+                                          const image_t image_id1) const
+{
+  const CorrespondenceGraph &correspondence_graph =
       database_cache_->CorrespondenceGraph();
 
   // Collect images that are connected to the first seed image and have
   // not been registered before in other reconstructions.
-  const class Image& image1 = reconstruction_->Image(image_id1);
+  const class Image &image1 = reconstruction_->Image(image_id1);
   std::unordered_map<image_t, point2D_t> num_correspondences;
   for (point2D_t point2D_idx = 0; point2D_idx < image1.NumPoints2D();
-       ++point2D_idx) {
-    for (const auto& corr :
-         correspondence_graph.FindCorrespondences(image_id1, point2D_idx)) {
+       ++point2D_idx)
+  {
+    for (const auto &corr :
+         correspondence_graph.FindCorrespondences(image_id1, point2D_idx))
+    {
       if (num_registrations_.count(corr.image_id) == 0 ||
-          num_registrations_.at(corr.image_id) == 0) {
+          num_registrations_.at(corr.image_id) == 0)
+      {
         num_correspondences[corr.image_id] += 1;
       }
     }
   }
 
   // Struct to hold meta-data for ranking images.
-  struct ImageInfo {
+  struct ImageInfo
+  {
     image_t image_id;
     bool prior_focal_length;
     point2D_t num_correspondences;
@@ -904,10 +1018,12 @@ std::vector<image_t> IncrementalMapper::FindSecondInitialImage(
   // Compose image information in a compact form for sorting.
   std::vector<ImageInfo> image_infos;
   image_infos.reserve(reconstruction_->NumImages());
-  for (const auto elem : num_correspondences) {
-    if (elem.second >= init_min_num_inliers) {
-      const class Image& image = reconstruction_->Image(elem.first);
-      const class Camera& camera = reconstruction_->Camera(image.CameraId());
+  for (const auto elem : num_correspondences)
+  {
+    if (elem.second >= init_min_num_inliers)
+    {
+      const class Image &image = reconstruction_->Image(elem.first);
+      const class Camera &camera = reconstruction_->Camera(image.CameraId());
       ImageInfo image_info;
       image_info.image_id = elem.first;
       image_info.prior_focal_length = camera.HasPriorFocalLength();
@@ -918,35 +1034,44 @@ std::vector<image_t> IncrementalMapper::FindSecondInitialImage(
 
   // Sort images such that images with a prior focal length and more
   // correspondences are preferred, i.e. they appear in the front of the list.
-  std::sort(
-      image_infos.begin(), image_infos.end(),
-      [](const ImageInfo& image_info1, const ImageInfo& image_info2) {
-        if (image_info1.prior_focal_length && !image_info2.prior_focal_length) {
-          return true;
-        } else if (!image_info1.prior_focal_length &&
-                   image_info2.prior_focal_length) {
-          return false;
-        } else {
-          return image_info1.num_correspondences >
-                 image_info2.num_correspondences;
-        }
-      });
+  std::sort(image_infos.begin(), image_infos.end(),
+            [](const ImageInfo &image_info1, const ImageInfo &image_info2)
+            {
+              if (image_info1.prior_focal_length &&
+                  !image_info2.prior_focal_length)
+              {
+                return true;
+              }
+              else if (!image_info1.prior_focal_length &&
+                       image_info2.prior_focal_length)
+              {
+                return false;
+              }
+              else
+              {
+                return image_info1.num_correspondences >
+                       image_info2.num_correspondences;
+              }
+            });
 
   // Extract image identifiers in sorted order.
   std::vector<image_t> image_ids;
   image_ids.reserve(image_infos.size());
-  for (const ImageInfo& image_info : image_infos) {
+  for (const ImageInfo &image_info : image_infos)
+  {
     image_ids.push_back(image_info.image_id);
   }
 
   return image_ids;
 }
 
-std::vector<image_t> IncrementalMapper::FindLocalBundle(
-    const Options& options, const image_t image_id) const {
+std::vector<image_t>
+IncrementalMapper::FindLocalBundle(const Options &options,
+                                   const image_t image_id) const
+{
   CHECK(options.Check());
 
-  const Image& image = reconstruction_->Image(image_id);
+  const Image &image = reconstruction_->Image(image_id);
   CHECK(image.IsRegistered());
 
   // Extract all images that have at least one 3D point with the query image
@@ -957,12 +1082,16 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
   std::unordered_set<point3D_t> point3D_ids;
   point3D_ids.reserve(image.NumPoints3D());
 
-  for (const Point2D& point2D : image.Points2D()) {
-    if (point2D.HasPoint3D()) {
+  for (const Point2D &point2D : image.Points2D())
+  {
+    if (point2D.HasPoint3D())
+    {
       point3D_ids.insert(point2D.Point3DId());
-      const Point3D& point3D = reconstruction_->Point3D(point2D.Point3DId());
-      for (const TrackElement& track_el : point3D.Track().Elements()) {
-        if (track_el.image_id != image_id) {
+      const Point3D &point3D = reconstruction_->Point3D(point2D.Point3DId());
+      for (const TrackElement &track_el : point3D.Track().Elements())
+      {
+        if (track_el.image_id != image_id)
+        {
           shared_observations[track_el.image_id] += 1;
         }
       }
@@ -974,10 +1103,9 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
   std::vector<std::pair<image_t, size_t>> overlapping_images(
       shared_observations.begin(), shared_observations.end());
   std::sort(overlapping_images.begin(), overlapping_images.end(),
-            [](const std::pair<image_t, size_t>& image1,
-               const std::pair<image_t, size_t>& image2) {
-              return image1.second > image2.second;
-            });
+            [](const std::pair<image_t, size_t> &image1,
+               const std::pair<image_t, size_t> &image2)
+            { return image1.second > image2.second; });
 
   // The local bundle is composed of the given image and its most connected
   // neighbor images, hence the subtraction of 1.
@@ -993,8 +1121,10 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
 
   // If the number of overlapping images equals the number of desired images in
   // the local bundle, then simply copy over the image identifiers.
-  if (overlapping_images.size() == num_eff_images) {
-    for (const auto& overlapping_image : overlapping_images) {
+  if (overlapping_images.size() == num_eff_images)
+  {
+    for (const auto &overlapping_image : overlapping_images)
+    {
       local_bundle_image_ids.push_back(overlapping_image.first);
     }
     return local_bundle_image_ids;
@@ -1028,35 +1158,42 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
   std::vector<double> tri_angles(overlapping_images.size(), -1.0);
   std::vector<char> used_overlapping_images(overlapping_images.size(), false);
 
-  for (const auto& selection_threshold : selection_thresholds) {
+  for (const auto &selection_threshold : selection_thresholds)
+  {
     for (size_t overlapping_image_idx = 0;
          overlapping_image_idx < overlapping_images.size();
-         ++overlapping_image_idx) {
+         ++overlapping_image_idx)
+    {
       // Check if the image has sufficient overlap. Since the images are ordered
       // based on the overlap, we can just skip the remaining ones.
       if (overlapping_images[overlapping_image_idx].second <
-          selection_threshold.second) {
+          selection_threshold.second)
+      {
         break;
       }
 
       // Check if the image is already in the local bundle.
-      if (used_overlapping_images[overlapping_image_idx]) {
+      if (used_overlapping_images[overlapping_image_idx])
+      {
         continue;
       }
 
-      const auto& overlapping_image = reconstruction_->Image(
+      const auto &overlapping_image = reconstruction_->Image(
           overlapping_images[overlapping_image_idx].first);
       const Eigen::Vector3d overlapping_proj_center =
           overlapping_image.ProjectionCenter();
 
       // In the first iteration, compute the triangulation angle. In later
       // iterations, reuse the previously computed value.
-      double& tri_angle = tri_angles[overlapping_image_idx];
-      if (tri_angle < 0.0) {
+      double &tri_angle = tri_angles[overlapping_image_idx];
+      if (tri_angle < 0.0)
+      {
         // Collect the commonly observed 3D points.
         shared_points3D.clear();
-        for (const Point2D& point2D : image.Points2D()) {
-          if (point2D.HasPoint3D() && point3D_ids.count(point2D.Point3DId())) {
+        for (const Point2D &point2D : image.Points2D())
+        {
+          if (point2D.HasPoint3D() && point3D_ids.count(point2D.Point3DId()))
+          {
             shared_points3D.push_back(
                 reconstruction_->Point3D(point2D.Point3DId()).XYZ());
           }
@@ -1071,18 +1208,21 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
       }
 
       // Check that the image has sufficient triangulation angle.
-      if (tri_angle >= selection_threshold.first) {
+      if (tri_angle >= selection_threshold.first)
+      {
         local_bundle_image_ids.push_back(overlapping_image.ImageId());
         used_overlapping_images[overlapping_image_idx] = true;
         // Check if we already collected enough images.
-        if (local_bundle_image_ids.size() >= num_eff_images) {
+        if (local_bundle_image_ids.size() >= num_eff_images)
+        {
           break;
         }
       }
     }
 
     // Check if we already collected enough images.
-    if (local_bundle_image_ids.size() >= num_eff_images) {
+    if (local_bundle_image_ids.size() >= num_eff_images)
+    {
       break;
     }
   }
@@ -1090,18 +1230,22 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
   // In case there are not enough images with sufficient triangulation angle,
   // simply fill up the rest with the most overlapping images.
 
-  if (local_bundle_image_ids.size() < num_eff_images) {
+  if (local_bundle_image_ids.size() < num_eff_images)
+  {
     for (size_t overlapping_image_idx = 0;
          overlapping_image_idx < overlapping_images.size();
-         ++overlapping_image_idx) {
+         ++overlapping_image_idx)
+    {
       // Collect image if it is not yet in the local bundle.
-      if (!used_overlapping_images[overlapping_image_idx]) {
+      if (!used_overlapping_images[overlapping_image_idx])
+      {
         local_bundle_image_ids.push_back(
             overlapping_images[overlapping_image_idx].first);
         used_overlapping_images[overlapping_image_idx] = true;
 
         // Check if we already collected enough images.
-        if (local_bundle_image_ids.size() >= num_eff_images) {
+        if (local_bundle_image_ids.size() >= num_eff_images)
+        {
           break;
         }
       }
@@ -1111,53 +1255,64 @@ std::vector<image_t> IncrementalMapper::FindLocalBundle(
   return local_bundle_image_ids;
 }
 
-void IncrementalMapper::RegisterImageEvent(const image_t image_id) {
-  const Image& image = reconstruction_->Image(image_id);
-  size_t& num_reg_images_for_camera =
+void IncrementalMapper::RegisterImageEvent(const image_t image_id)
+{
+  const Image &image = reconstruction_->Image(image_id);
+  size_t &num_reg_images_for_camera =
       num_reg_images_per_camera_[image.CameraId()];
   num_reg_images_for_camera += 1;
 
-  size_t& num_regs_for_image = num_registrations_[image_id];
+  size_t &num_regs_for_image = num_registrations_[image_id];
   num_regs_for_image += 1;
-  if (num_regs_for_image == 1) {
+  if (num_regs_for_image == 1)
+  {
     num_total_reg_images_ += 1;
-  } else if (num_regs_for_image > 1) {
+  }
+  else if (num_regs_for_image > 1)
+  {
     num_shared_reg_images_ += 1;
   }
 }
 
-void IncrementalMapper::DeRegisterImageEvent(const image_t image_id) {
-  const Image& image = reconstruction_->Image(image_id);
-  size_t& num_reg_images_for_camera =
+void IncrementalMapper::DeRegisterImageEvent(const image_t image_id)
+{
+  const Image &image = reconstruction_->Image(image_id);
+  size_t &num_reg_images_for_camera =
       num_reg_images_per_camera_.at(image.CameraId());
   CHECK_GT(num_reg_images_for_camera, 0);
   num_reg_images_for_camera -= 1;
 
-  size_t& num_regs_for_image = num_registrations_[image_id];
+  size_t &num_regs_for_image = num_registrations_[image_id];
   num_regs_for_image -= 1;
-  if (num_regs_for_image == 0) {
+  if (num_regs_for_image == 0)
+  {
     num_total_reg_images_ -= 1;
-  } else if (num_regs_for_image > 0) {
+  }
+  else if (num_regs_for_image > 0)
+  {
     num_shared_reg_images_ -= 1;
   }
 }
 
-bool IncrementalMapper::EstimateInitialTwoViewGeometry(
-    const Options& options, const image_t image_id1, const image_t image_id2) {
+bool IncrementalMapper::EstimateInitialTwoViewGeometry(const Options &options,
+                                                       const image_t image_id1,
+                                                       const image_t image_id2)
+{
   const image_pair_t image_pair_id =
       Database::ImagePairToPairId(image_id1, image_id2);
 
-  if (prev_init_image_pair_id_ == image_pair_id) {
+  if (prev_init_image_pair_id_ == image_pair_id)
+  {
     return true;
   }
 
-  const Image& image1 = database_cache_->Image(image_id1);
-  const Camera& camera1 = database_cache_->Camera(image1.CameraId());
+  const Image &image1 = database_cache_->Image(image_id1);
+  const Camera &camera1 = database_cache_->Camera(image1.CameraId());
 
-  const Image& image2 = database_cache_->Image(image_id2);
-  const Camera& camera2 = database_cache_->Camera(image2.CameraId());
+  const Image &image2 = database_cache_->Image(image_id2);
+  const Camera &camera2 = database_cache_->Camera(image2.CameraId());
 
-  const CorrespondenceGraph& correspondence_graph =
+  const CorrespondenceGraph &correspondence_graph =
       database_cache_->CorrespondenceGraph();
   const FeatureMatches matches =
       correspondence_graph.FindCorrespondencesBetweenImages(image_id1,
@@ -1165,13 +1320,15 @@ bool IncrementalMapper::EstimateInitialTwoViewGeometry(
 
   std::vector<Eigen::Vector2d> points1;
   points1.reserve(image1.NumPoints2D());
-  for (const auto& point : image1.Points2D()) {
+  for (const auto &point : image1.Points2D())
+  {
     points1.push_back(point.XY());
   }
 
   std::vector<Eigen::Vector2d> points2;
   points2.reserve(image2.NumPoints2D());
-  for (const auto& point : image2.Points2D()) {
+  for (const auto &point : image2.Points2D())
+  {
     points2.push_back(point.XY());
   }
 
@@ -1183,14 +1340,16 @@ bool IncrementalMapper::EstimateInitialTwoViewGeometry(
                                        matches, two_view_geometry_options);
 
   if (!two_view_geometry.EstimateRelativePose(camera1, points1, camera2,
-                                              points2)) {
+                                              points2))
+  {
     return false;
   }
 
   if (static_cast<int>(two_view_geometry.inlier_matches.size()) >=
           options.init_min_num_inliers &&
       std::abs(two_view_geometry.tvec.z()) < options.init_max_forward_motion &&
-      two_view_geometry.tri_angle > DegToRad(options.init_min_tri_angle)) {
+      two_view_geometry.tri_angle > DegToRad(options.init_min_tri_angle))
+  {
     prev_init_image_pair_id_ = image_pair_id;
     prev_init_two_view_geometry_ = two_view_geometry;
     return true;
@@ -1199,4 +1358,4 @@ bool IncrementalMapper::EstimateInitialTwoViewGeometry(
   return false;
 }
 
-}  // namespace colmap
+} // namespace colmap
