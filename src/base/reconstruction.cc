@@ -211,9 +211,9 @@ point3D_t Reconstruction::AddPoint3D(const Eigen::Vector3d &xyz,
   for (const auto &track_el : track.Elements())
   {
     class Image &image = Image(track_el.image_id);
-    CHECK(!image.Point2D(track_el.point2D_idx).HasPoint3D());
+    // CHECK(!image.Point2D(track_el.point2D_idx).HasPoint3D());
     image.SetPoint3DForPoint2D(track_el.point2D_idx, point3D_id);
-    CHECK_LE(image.NumPoints3D(), image.NumPoints2D());
+    // CHECK_LE(image.NumPoints3D(), image.NumPoints2D());
   }
 
   const bool kIsContinuedPoint3D = false;

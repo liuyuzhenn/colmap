@@ -187,10 +187,15 @@ size_t IncrementalTriangulator::CompleteImage(const Options &options,
         {
             continue;
         }
-
+        //////////////////////////////////////////////////////////////////////
+        //////////////// find correspondences transitively ///////////////////
+        //////////////////////////////////////////////////////////////////////
         const size_t num_triangulated =
             Find(options, image_id, point2D_idx,
                  static_cast<size_t>(options.max_transitivity), &corrs_data);
+        /////////////////////////////////////////////////////////////////////
+        //// correspondences are triangulated or no correspondences /////////
+        /////////////////////////////////////////////////////////////////////
         if (num_triangulated || corrs_data.empty())
         {
             continue;
