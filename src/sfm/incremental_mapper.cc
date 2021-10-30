@@ -425,21 +425,15 @@ bool IncrementalMapper::RegisterNextImage(const Options &options,
         {
             const Image &corr_image = reconstruction_->Image(corr.image_id);
             if (!corr_image.IsRegistered())
-            {
                 continue;
-            }
 
             const Point2D &corr_point2D = corr_image.Point2D(corr.point2D_idx);
             if (!corr_point2D.HasPoint3D())
-            {
                 continue;
-            }
 
             // Avoid duplicate correspondences.
             if (point3D_ids.count(corr_point2D.Point3DId()) > 0)
-            {
                 continue;
-            }
 
             const Camera &corr_camera =
                 reconstruction_->Camera(corr_image.CameraId());
@@ -448,9 +442,7 @@ bool IncrementalMapper::RegisterNextImage(const Options &options,
             if (corr_camera.HasBogusParams(options.min_focal_length_ratio,
                                            options.max_focal_length_ratio,
                                            options.max_extra_param))
-            {
                 continue;
-            }
 
             const Point3D &point3D =
                 reconstruction_->Point3D(corr_point2D.Point3DId());
@@ -1101,12 +1093,8 @@ IncrementalMapper::FindLocalBundle(const Options &options,
             const Point3D &point3D =
                 reconstruction_->Point3D(point2D.Point3DId());
             for (const TrackElement &track_el : point3D.Track().Elements())
-            {
                 if (track_el.image_id != image_id)
-                {
                     shared_observations[track_el.image_id] += 1;
-                }
-            }
         }
     }
 

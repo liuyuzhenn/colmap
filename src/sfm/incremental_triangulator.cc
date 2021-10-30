@@ -342,9 +342,7 @@ size_t IncrementalTriangulator::Retriangulate(const Options &options)
             static_cast<double>(image_pair.second.num_tri_corrs) /
             static_cast<double>(image_pair.second.num_total_corrs);
         if (tri_ratio >= options.re_min_ratio)
-        {
             continue;
-        }
 
         // Check if images are registered yet.
 
