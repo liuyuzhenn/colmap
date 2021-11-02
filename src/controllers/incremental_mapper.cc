@@ -529,19 +529,13 @@ void IncrementalMapperController::Reconstruct(
                 // need for further initialization trials.
                 if (options_->init_image_id1 != -1 &&
                     options_->init_image_id2 != -1)
-                {
                     break;
-                }
                 else
-                {
                     continue;
-                }
             }
 
             if (options_->extract_colors)
-            {
                 ExtractColors(image_path_, image_id1, &reconstruction);
-            }
         }
 
         Callback(INITIAL_IMAGE_PAIR_REG_CALLBACK);
