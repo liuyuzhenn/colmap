@@ -896,9 +896,7 @@ size_t Reconstruction::ComputeNumObservations() const
 {
   size_t num_obs = 0;
   for (const image_t image_id : reg_image_ids_)
-  {
     num_obs += Image(image_id).NumPoints3D();
-  }
   return num_obs;
 }
 
